@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { 
-  User, UserRole, MedicalRecord, Appointment, AccessKey, 
-  LedgerBlock, AppState, LedgerAction, AppointmentStatus, LabRequest 
+import {
+  User, UserRole, MedicalRecord, Appointment, AccessKey,
+  LedgerBlock, AppState, LedgerAction, AppointmentStatus, LabRequest
 } from '../types';
 
 // Simple hashing simulation
@@ -15,35 +15,49 @@ const simpleHash = (str: string) => {
   return Math.abs(hash).toString(16);
 };
 
+// Haversine formula to calculate distance in meters
+const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const d = R * c; // Distance in km
+  return d * 1000; // Distance in meters
+};
+
 // Initial Data Seeding
 const MOCK_USERS: User[] = [
   // Family Account: Parent and Child share phone number
   { id: 'p1', name: 'Rahul Sharma', role: UserRole.PATIENT, phoneNumber: '9980099800', emergencyInfo: 'Blood Type: O+, Allergic to Penicillin', age: 45, gender: 'Male' },
   { id: 'p2', name: 'Aarav Sharma (Child)', role: UserRole.PATIENT, phoneNumber: '9980099800', emergencyInfo: 'No known allergies', age: 10, gender: 'Male' },
-  
+
   // Medical Staff with Specialties in Bengaluru
   { id: 'd1', name: 'Dr. Priya Reddy', role: UserRole.DOCTOR, hospitalName: 'Manipal Hospital', specialty: 'General Practice', location: { lat: 12.9592, lng: 77.6476 } }, // Old Airport Rd
   { id: 'd2', name: 'Dr. Arjun Rao', role: UserRole.DOCTOR, hospitalName: 'Apollo Hospital', specialty: 'Cardiology', location: { lat: 12.8955, lng: 77.5986 } }, // Bannerghatta
   { id: 'd3', name: 'Dr. Lakshmi Nair', role: UserRole.DOCTOR, hospitalName: 'Narayana Health', specialty: 'Neurology', location: { lat: 12.8368, lng: 77.6749 } }, // Electronic City
   { id: 'd4', name: 'Dr. Rohan Mehta', role: UserRole.DOCTOR, hospitalName: 'Fortis Hospital', specialty: 'Orthopedics', location: { lat: 12.9912, lng: 77.5960 } }, // Cunningham Rd
-  
+
   // Labs
   { id: 'l1', name: 'Anand Diagnostics', role: UserRole.LAB_TECHNICIAN, hospitalName: 'Anand Diagnostics', specialty: 'Pathology Lab' },
   { id: 'l2', name: 'Aarthi Scans', role: UserRole.LAB_TECHNICIAN, hospitalName: 'Aarthi Scans & Labs', specialty: 'Radiology Center' },
 ];
 
 const MOCK_RECORDS: MedicalRecord[] = [
-  { 
-    id: 'r1', patientId: 'p1', title: 'Blood Work - Complete Blood Count', 
-    description: 'Hemoglobin: 13.5 g/dL, WBC: 6.5, Platelets: 250k. Normal range.', 
+  {
+    id: 'r1', patientId: 'p1', title: 'Blood Work - Complete Blood Count',
+    description: 'Hemoglobin: 13.5 g/dL, WBC: 6.5, Platelets: 250k. Normal range.',
     fileName: 'cbc_results_jan.pdf',
     fileType: 'LAB', dateCreated: new Date(Date.now() - 86400000 * 10).toISOString(),
     dataHash: simpleHash('r1-data-initial'),
     isEmergencyAccessible: true
   },
-  { 
-    id: 'r2', patientId: 'p1', title: 'MRI Scan - Lumbar Spine', 
-    description: 'Mild disc herniation at L4-L5. No spinal stenosis observed.', 
+  {
+    id: 'r2', patientId: 'p1', title: 'MRI Scan - Lumbar Spine',
+    description: 'Mild disc herniation at L4-L5. No spinal stenosis observed.',
     fileName: 'mri_scan_L4L5.dcm',
     fileType: 'DICOM', dateCreated: new Date(Date.now() - 86400000 * 2).toISOString(),
     dataHash: simpleHash('r2-data-initial'),
@@ -57,7 +71,7 @@ const MOCK_APPOINTMENTS: Appointment[] = [
     hospitalName: 'Manipal Hospital', date: new Date().toISOString(), // Today (Simulated "Now")
     durationMinutes: 60, status: AppointmentStatus.SCHEDULED
   },
-   {
+  {
     id: 'apt2', patientId: 'p2', doctorId: 'd2', doctorName: 'Dr. Arjun Rao',
     hospitalName: 'Apollo Hospital', date: new Date(Date.now() + 86400000).toISOString(), // Tomorrow
     durationMinutes: 30, status: AppointmentStatus.SCHEDULED
@@ -75,6 +89,8 @@ interface StoreContextType extends AppState {
   verifyAccessKey: (key: string, doctorId: string) => { valid: boolean; message: string; patientId?: string };
   revokeKey: (code: string) => void;
   isGeoFenced: boolean;
+  currentCoords: { lat: number; lng: number } | null;
+  locationError: string | null;
   toggleGeoFence: () => void;
   checkAutoKeys: () => void;
   requestAccess: (appointmentId: string) => void;
@@ -90,22 +106,112 @@ interface StoreContextType extends AppState {
 const StoreContext = createContext<StoreContextType | null>(null);
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<AppState>({
-    currentUser: null,
-    users: MOCK_USERS,
-    records: MOCK_RECORDS,
-    appointments: MOCK_APPOINTMENTS,
-    accessKeys: [],
-    labRequests: [],
-    ledger: [
-      { 
-        index: 0, timestamp: new Date().toISOString(), action: LedgerAction.UPLOAD_RECORD, 
-        details: 'Genesis Block', dataHash: '0000', previousHash: '0', blockHash: '0001' 
+  // Load from localStorage or use defaults
+  const [state, setState] = useState<AppState>(() => {
+    const saved = localStorage.getItem('medichain-state');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return {
+          ...parsed,
+          // Ensure dates are properly parsed
+          appointments: parsed.appointments?.map((a: any) => ({
+            ...a,
+            date: typeof a.date === 'string' ? a.date : new Date(a.date).toISOString()
+          })) || MOCK_APPOINTMENTS,
+          // Keep other data from localStorage
+          users: parsed.users || MOCK_USERS,
+          records: parsed.records || MOCK_RECORDS,
+          accessKeys: parsed.accessKeys || [],
+          ledger: parsed.ledger || [{
+            index: 0,
+            timestamp: new Date().toISOString(),
+            action: LedgerAction.UPLOAD_RECORD,
+            details: 'Genesis Block',
+            dataHash: '0000',
+            previousHash: '0',
+            blockHash: '0001'
+          }],
+          labRequests: parsed.labRequests || [],
+        };
+      } catch (e) {
+        console.error('Failed to parse saved state:', e);
       }
-    ]
+    }
+    // Default state if no saved data
+    return {
+      currentUser: null,
+      users: MOCK_USERS,
+      records: MOCK_RECORDS,
+      appointments: MOCK_APPOINTMENTS,
+      accessKeys: [],
+      labRequests: [],
+      ledger: [
+        {
+          index: 0,
+          timestamp: new Date().toISOString(),
+          action: LedgerAction.UPLOAD_RECORD,
+          details: 'Genesis Block',
+          dataHash: '0000',
+          previousHash: '0',
+          blockHash: '0001'
+        }
+      ]
+    };
   });
 
   const [isGeoFenced, setIsGeoFenced] = useState(true);
+  const [isSimulationMode, setIsSimulationMode] = useState(false);
+  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Auto-save state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('medichain-state', JSON.stringify(state));
+  }, [state]);
+
+  // Geolocation Tracking for Doctors
+  useEffect(() => {
+    if (!state.currentUser || state.currentUser.role !== UserRole.DOCTOR) {
+      setIsGeoFenced(true); // Don't block non-doctors
+      return;
+    }
+
+    if (isSimulationMode) {
+      setIsGeoFenced(true);
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setLocationError("Geolocation not supported");
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setCurrentCoords({ lat: latitude, lng: longitude });
+
+        if (state.currentUser?.location) {
+          const dist = getDistance(
+            latitude, longitude,
+            state.currentUser.location.lat,
+            state.currentUser.location.lng
+          );
+          // Within 500 meters of hospital
+          setIsGeoFenced(dist <= 500);
+        }
+      },
+      (err) => {
+        console.error("Location error:", err);
+        setLocationError(err.message);
+        setIsGeoFenced(false); // Block access if location unavailable
+      },
+      { enableHighAccuracy: true }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [state.currentUser, isSimulationMode]);
 
   // Helper to add to immutable ledger
   const addToLedger = (action: LedgerAction, details: string, dataHash: string) => {
@@ -139,7 +245,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       age: 30, // Default for demo
       gender: 'Other' // Default for demo
     };
-    
+
     setState(prev => ({ ...prev, users: [...prev.users, newUser], currentUser: newUser }));
     addToLedger(LedgerAction.REGISTER_PATIENT, `New patient registered: ${name}`, simpleHash(name + phoneNumber));
   };
@@ -154,7 +260,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const uploadRecord = (patientId: string, title: string, description: string, fileType: MedicalRecord['fileType'], fileName: string, billFileName?: string) => {
     const uploaderId = state.currentUser?.id || 'SYSTEM';
-    
+
     const newRecord: MedicalRecord = {
       id: `r${Date.now()}`,
       patientId: patientId,
@@ -165,7 +271,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       billFileName,
       dateCreated: new Date().toISOString(),
       dataHash: simpleHash(description + title + fileName),
-      isEmergencyAccessible: true 
+      isEmergencyAccessible: true
     };
 
     setState(prev => ({ ...prev, records: [newRecord, ...prev.records] }));
@@ -203,7 +309,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (approved) {
       // Create actual record
       uploadRecord(request.patientId, request.title, request.description, request.fileType, request.reportFileName, request.billFileName);
-      
+
       addToLedger(LedgerAction.LAB_REQUEST_APPROVED, `Patient approved lab report ${requestId}`, simpleHash(requestId));
     } else {
       addToLedger(LedgerAction.LAB_REQUEST_REJECTED, `Patient rejected lab report ${requestId}`, simpleHash(requestId));
@@ -242,7 +348,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!apt) return '';
 
     const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
-    const duration = isAuto ? (apt.durationMinutes + 60) : 30; 
+    const duration = isAuto ? (apt.durationMinutes + 60) : 30;
     const expiresAt = new Date(Date.now() + 1000 * 60 * duration).toISOString();
 
     const newKey: AccessKey = {
@@ -257,8 +363,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setState(prev => ({ ...prev, accessKeys: [...prev.accessKeys, newKey] }));
     addToLedger(
-      isAuto ? LedgerAction.AUTO_GENERATE_KEY : LedgerAction.GENERATE_KEY, 
-      `Key generated for Apt ${appointmentId}`, 
+      isAuto ? LedgerAction.AUTO_GENERATE_KEY : LedgerAction.GENERATE_KEY,
+      `Key generated for Apt ${appointmentId}`,
       simpleHash(code)
     );
     return code;
@@ -269,17 +375,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const now = new Date();
     const activeAppointments = state.appointments.filter(a => {
-        if (a.patientId !== state.currentUser?.id) return false;
-        const aptTime = new Date(a.date);
-        const diffInMinutes = (now.getTime() - aptTime.getTime()) / (1000 * 60);
-        return diffInMinutes > -60 && diffInMinutes < 60; 
+      if (a.patientId !== state.currentUser?.id) return false;
+      const aptTime = new Date(a.date);
+      const diffInMinutes = (now.getTime() - aptTime.getTime()) / (1000 * 60);
+      return diffInMinutes > -60 && diffInMinutes < 60;
     });
 
     activeAppointments.forEach(apt => {
-        const hasKey = state.accessKeys.some(k => k.appointmentId === apt.id && k.isActive);
-        if (!hasKey) {
-            generateAccessKey(apt.id, true);
-        }
+      const hasKey = state.accessKeys.some(k => k.appointmentId === apt.id && k.isActive);
+      if (!hasKey) {
+        generateAccessKey(apt.id, true);
+      }
     });
   }, [state.appointments, state.accessKeys, state.currentUser]);
 
@@ -293,7 +399,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const verifyAccessKey = (key: string, doctorId: string): { valid: boolean; message: string; patientId?: string } => {
     const accessKey = state.accessKeys.find(k => k.code === key);
-    
+
     if (!accessKey) return { valid: false, message: 'Invalid Key' };
     if (!accessKey.isActive) return { valid: false, message: 'Key Revoked' };
     if (new Date() > new Date(accessKey.expiresAt)) return { valid: false, message: 'Key Expired' };
@@ -305,14 +411,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!isGeoFenced) return { valid: false, message: 'Doctor not at hospital location (Geo-fence failed)' };
 
     addToLedger(LedgerAction.ACCESS_DATA, `Doctor ${doctorId} accessed Patient ${accessKey.patientId}`, simpleHash(key));
-    
+
     return { valid: true, message: 'Success', patientId: accessKey.patientId };
   };
 
   const requestAccess = (appointmentId: string) => {
     setState(prev => ({
       ...prev,
-      appointments: prev.appointments.map(a => 
+      appointments: prev.appointments.map(a =>
         a.id === appointmentId ? { ...a, accessRequestStatus: 'PENDING' } : a
       )
     }));
@@ -322,7 +428,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const respondToAccessRequest = (appointmentId: string, approved: boolean) => {
     setState(prev => ({
       ...prev,
-      appointments: prev.appointments.map(a => 
+      appointments: prev.appointments.map(a =>
         a.id === appointmentId ? { ...a, accessRequestStatus: approved ? 'APPROVED' : 'REJECTED' } : a
       )
     }));
@@ -340,67 +446,67 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!apt || !state.currentUser) return;
 
     setState(prev => {
-        // 1. Mark Appointment Completed
-        const updatedAppointments = prev.appointments.map(a => 
-            a.id === appointmentId ? { ...a, status: AppointmentStatus.COMPLETED } : a
-        );
+      // 1. Mark Appointment Completed
+      const updatedAppointments = prev.appointments.map(a =>
+        a.id === appointmentId ? { ...a, status: AppointmentStatus.COMPLETED } : a
+      );
 
-        // 2. Create Record
-        const newRecord: MedicalRecord = {
-          id: `r${Date.now()}`,
-          patientId: apt.patientId,
-          title: `Consultation: ${state.currentUser?.name}`,
-          description: summary,
-          fileType: 'PDF', 
-          fileName: `visit_${new Date().toISOString().split('T')[0]}.pdf`,
-          dateCreated: new Date().toISOString(),
-          dataHash: simpleHash(summary + apt.id),
-          isEmergencyAccessible: true,
-          followUpDate: followUpDate // Add Follow-up info
-        };
-        const updatedRecords = [newRecord, ...prev.records];
+      // 2. Create Record
+      const newRecord: MedicalRecord = {
+        id: `r${Date.now()}`,
+        patientId: apt.patientId,
+        title: `Consultation: ${state.currentUser?.name}`,
+        description: summary,
+        fileType: 'PDF',
+        fileName: `visit_${new Date().toISOString().split('T')[0]}.pdf`,
+        dateCreated: new Date().toISOString(),
+        dataHash: simpleHash(summary + apt.id),
+        isEmergencyAccessible: true,
+        followUpDate: followUpDate // Add Follow-up info
+      };
+      const updatedRecords = [newRecord, ...prev.records];
 
-        // 3. Revoke active key
-        const updatedKeys = prev.accessKeys.map(k => 
-            k.appointmentId === appointmentId && k.isActive 
-            ? { ...k, isActive: false } 
-            : k
-        );
+      // 3. Revoke active key
+      const updatedKeys = prev.accessKeys.map(k =>
+        k.appointmentId === appointmentId && k.isActive
+          ? { ...k, isActive: false }
+          : k
+      );
 
-        // 4. Update Ledger manually (atomic)
-        const lastBlock = prev.ledger[prev.ledger.length - 1];
-        const newBlock: LedgerBlock = {
-            index: prev.ledger.length,
-            timestamp: new Date().toISOString(),
-            action: LedgerAction.UPLOAD_RECORD,
-            details: `Visit completed & Record generated for Apt ${appointmentId}`,
-            dataHash: newRecord.dataHash,
-            previousHash: lastBlock.blockHash,
-            blockHash: simpleHash(lastBlock.blockHash + LedgerAction.UPLOAD_RECORD + `Visit completed & Record generated for Apt ${appointmentId}` + newRecord.dataHash)
-        };
-        const updatedLedger = [...prev.ledger, newBlock];
+      // 4. Update Ledger manually (atomic)
+      const lastBlock = prev.ledger[prev.ledger.length - 1];
+      const newBlock: LedgerBlock = {
+        index: prev.ledger.length,
+        timestamp: new Date().toISOString(),
+        action: LedgerAction.UPLOAD_RECORD,
+        details: `Visit completed & Record generated for Apt ${appointmentId}`,
+        dataHash: newRecord.dataHash,
+        previousHash: lastBlock.blockHash,
+        blockHash: simpleHash(lastBlock.blockHash + LedgerAction.UPLOAD_RECORD + `Visit completed & Record generated for Apt ${appointmentId}` + newRecord.dataHash)
+      };
+      const updatedLedger = [...prev.ledger, newBlock];
 
-        return {
-            ...prev,
-            appointments: updatedAppointments,
-            records: updatedRecords,
-            accessKeys: updatedKeys,
-            ledger: updatedLedger
-        };
+      return {
+        ...prev,
+        appointments: updatedAppointments,
+        records: updatedRecords,
+        accessKeys: updatedKeys,
+        ledger: updatedLedger
+      };
     });
   };
 
   const performEmergencyAccess = (phoneNumber: string): User[] => {
     const targets = state.users.filter(u => u.phoneNumber === phoneNumber && u.role === UserRole.PATIENT);
-    
+
     if (targets.length > 0 && state.currentUser) {
-        targets.forEach(t => {
-            addToLedger(
-                LedgerAction.EMERGENCY_ACCESS, 
-                `EMERGENCY OVERRIDE: Dr. ${state.currentUser?.id} accessed ${t.name} (ID: ${t.id})`, 
-                simpleHash(phoneNumber + Date.now())
-            );
-        });
+      targets.forEach(t => {
+        addToLedger(
+          LedgerAction.EMERGENCY_ACCESS,
+          `EMERGENCY OVERRIDE: Dr. ${state.currentUser?.id} accessed ${t.name} (ID: ${t.id})`,
+          simpleHash(phoneNumber + Date.now())
+        );
+      });
     }
     return targets;
   };
@@ -421,12 +527,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   };
 
-  const toggleGeoFence = () => setIsGeoFenced(!isGeoFenced);
+  const toggleGeoFence = () => {
+    setIsSimulationMode(!isSimulationMode);
+    if (!isSimulationMode) {
+      setIsGeoFenced(true);
+    }
+  };
 
   return (
-    <StoreContext.Provider value={{ 
-      ...state, login, registerPatient, logout, uploadRecord, bookAppointment, 
+    <StoreContext.Provider value={{
+      ...state, login, registerPatient, logout, uploadRecord, bookAppointment,
       generateAccessKey, verifyAccessKey, revokeKey, isGeoFenced, toggleGeoFence,
+      currentCoords, locationError,
       getUsersByPhone, checkAutoKeys, requestAccess, respondToAccessRequest,
       completeAppointment, performEmergencyAccess, updateEmergencyInfo, toggleRecordEmergency,
       submitLabRequest, respondToLabRequest
