@@ -83,7 +83,7 @@ interface StoreContextType extends AppState {
   registerPatient: (name: string, phoneNumber: string, emergencyInfo: string) => void;
   getUsersByPhone: (phone: string) => User[];
   logout: () => void;
-  uploadRecord: (patientId: string, title: string, description: string, fileType: MedicalRecord['fileType'], fileName: string, billFileName?: string) => void;
+  uploadRecord: (patientId: string, title: string, description: string, fileType: MedicalRecord['fileType'], fileName: string, billFileName?: string, fileUrl?: string) => void;
   bookAppointment: (doctorId: string, date: string) => void;
   generateAccessKey: (appointmentId: string, isAuto?: boolean) => string;
   verifyAccessKey: (key: string, doctorId: string) => { valid: boolean; message: string; patientId?: string };
@@ -258,7 +258,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setState(prev => ({ ...prev, currentUser: null }));
   };
 
-  const uploadRecord = (patientId: string, title: string, description: string, fileType: MedicalRecord['fileType'], fileName: string, billFileName?: string) => {
+  const uploadRecord = (patientId: string, title: string, description: string, fileType: MedicalRecord['fileType'], fileName: string, billFileName?: string, fileUrl?: string) => {
     const uploaderId = state.currentUser?.id || 'SYSTEM';
 
     const newRecord: MedicalRecord = {
@@ -271,6 +271,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       billFileName,
       dateCreated: new Date().toISOString(),
       dataHash: simpleHash(description + title + fileName),
+      fileUrl,
       isEmergencyAccessible: true
     };
 

@@ -54,6 +54,7 @@ export interface MedicalRecord {
   fileType: 'PDF' | 'DICOM' | 'LAB';
   dateCreated: string;
   dataHash: string; // The fingerprint
+  fileUrl?: string; // Local URL for previewing real uploads
   isEmergencyAccessible?: boolean; // Can this be seen in emergency override?
   followUpDate?: string; // ISO Date string for reminders
 }
