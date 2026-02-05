@@ -37,6 +37,20 @@ export const PatientDashboard: React.FC = () => {
    const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1);
    const [selectedDept, setSelectedDept] = useState<string | null>(null);
    const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
+   const [selectedTime, setSelectedTime] = useState<string>('10:00');
+
+   // Available time slots for appointment booking
+   const availableTimeSlots = [
+      '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+      '12:00', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'
+   ];
+
+   const formatTimeSlot = (time: string) => {
+      const [hours, minutes] = time.split(':').map(Number);
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const displayHours = hours % 12 || 12;
+      return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+   };
 
    // Run auto-check for keys
    useEffect(() => {
@@ -144,15 +158,17 @@ export const PatientDashboard: React.FC = () => {
 
    const handleBookConfirm = () => {
       if (selectedDoc) {
-         // Book for tomorrow at 10 AM (Simulation)
+         // Book for tomorrow at selected time
          const tomorrow = new Date();
          tomorrow.setDate(tomorrow.getDate() + 1);
-         tomorrow.setHours(10, 0, 0, 0);
+         const [hours, minutes] = selectedTime.split(':').map(Number);
+         tomorrow.setHours(hours, minutes, 0, 0);
          bookAppointment(selectedDoc, tomorrow.toISOString());
          setShowBookingModal(false);
          setBookingStep(1);
          setSelectedDept(null);
          setSelectedDoc(null);
+         setSelectedTime('10:00'); // Reset to default
       }
    };
 
@@ -311,20 +327,50 @@ export const PatientDashboard: React.FC = () => {
                      )}
 
                      {bookingStep === 3 && selectedDoc && (
-                        <div className="text-center space-y-6 py-4">
-                           <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto text-green-600">
-                              <Calendar size={32} />
-                           </div>
-                           <div>
-                              <h4 className="text-xl font-bold text-slate-800">Confirm Booking?</h4>
+                        <div className="space-y-6 py-4">
+                           <div className="text-center">
+                              <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto text-green-600">
+                                 <Calendar size={32} />
+                              </div>
+                              <h4 className="text-xl font-bold text-slate-800 mt-4">Select Appointment Time</h4>
                               <p className="text-slate-500 mt-2">
-                                 Appointment with <span className="font-semibold text-slate-900">{users.find(u => u.id === selectedDoc)?.name}</span><br />
-                                 tomorrow at 10:00 AM.
+                                 Booking with <span className="font-semibold text-slate-900">{users.find(u => u.id === selectedDoc)?.name}</span>
                               </p>
                            </div>
+
+                           {/* Time Slot Selection */}
+                           <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-3">Choose a time slot for tomorrow:</label>
+                              <div className="grid grid-cols-4 gap-2">
+                                 {availableTimeSlots.map(time => (
+                                    <button
+                                       key={time}
+                                       onClick={() => setSelectedTime(time)}
+                                       className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${selectedTime === time
+                                             ? 'bg-primary text-white shadow-md ring-2 ring-primary ring-offset-2'
+                                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                          }`}
+                                    >
+                                       {formatTimeSlot(time)}
+                                    </button>
+                                 ))}
+                              </div>
+                           </div>
+
+                           {/* Confirmation Summary */}
+                           <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                              <p className="text-sm text-slate-600">
+                                 <span className="font-semibold text-slate-800">Appointment Summary:</span><br />
+                                 <span className="flex items-center gap-2 mt-2">
+                                    <Calendar size={14} className="text-primary" />
+                                    Tomorrow at <span className="font-bold text-primary">{formatTimeSlot(selectedTime)}</span>
+                                 </span>
+                              </p>
+                           </div>
+
                            <div className="flex gap-3">
-                              <button onClick={() => setBookingStep(2)} className="flex-1 py-3 border border-slate-300 rounded-lg text-slate-600 font-medium">Back</button>
-                              <button onClick={handleBookConfirm} className="flex-1 py-3 bg-primary text-white rounded-lg font-bold hover:bg-sky-600">Confirm</button>
+                              <button onClick={() => setBookingStep(2)} className="flex-1 py-3 border border-slate-300 rounded-lg text-slate-600 font-medium hover:bg-slate-50">Back</button>
+                              <button onClick={handleBookConfirm} className="flex-1 py-3 bg-primary text-white rounded-lg font-bold hover:bg-sky-600 transition-colors">Confirm Booking</button>
                            </div>
                         </div>
                      )}
