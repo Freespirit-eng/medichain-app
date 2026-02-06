@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../context/Store';
 import { MedicalRecord, UserRole, AppointmentStatus, LedgerAction } from '../types';
-import { Key, FileText, Plus, AlertCircle, Calendar, Upload, X, Wand2, MapPin, ChevronRight, Stethoscope, Microscope, ShieldAlert, Check, Ban, Siren, Eye, EyeOff, Save, Receipt, FlaskConical, BarChart3, Clock } from 'lucide-react';
+import { Key, FileText, Plus, AlertCircle, Calendar, Upload, X, Wand2, MapPin, ChevronRight, Stethoscope, Microscope, ShieldAlert, Check, Ban, Siren, Eye, EyeOff, Save, Receipt, FlaskConical, BarChart3, Clock, MessageSquare, ExternalLink } from 'lucide-react';
 import { explainToPatient, generateRecordTitle } from '../services/gemini';
 import { FileViewer } from '../components/FileViewer';
 
@@ -347,8 +347,8 @@ export const PatientDashboard: React.FC = () => {
                                        key={time}
                                        onClick={() => setSelectedTime(time)}
                                        className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${selectedTime === time
-                                             ? 'bg-primary text-white shadow-md ring-2 ring-primary ring-offset-2'
-                                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                          ? 'bg-primary text-white shadow-md ring-2 ring-primary ring-offset-2'
+                                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                                           }`}
                                     >
                                        {formatTimeSlot(time)}
@@ -774,6 +774,29 @@ export const PatientDashboard: React.FC = () => {
                   </div>
                ) : null}
             </div>
+
+            {/* Feedback Form Card */}
+            <a
+               href="https://docs.google.com/forms/d/e/1FAIpQLSdTbLqWvy3tzhClp4hWzKKwDgaYHPryRu_k-DDb_Q7_h6YPGQ/viewform"
+               target="_blank"
+               rel="noopener noreferrer"
+               className="block bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] group"
+            >
+               <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-white/20 rounded-lg">
+                     <MessageSquare size={24} />
+                  </div>
+                  <h3 className="font-bold text-lg">Share Your Feedback</h3>
+                  <ExternalLink size={16} className="ml-auto opacity-60 group-hover:opacity-100 transition-opacity" />
+               </div>
+               <p className="text-sm text-emerald-100">
+                  Help us improve! Your feedback helps us make MediChain better for everyone.
+               </p>
+               <div className="mt-4 bg-white/20 rounded-lg px-4 py-2 text-sm font-medium inline-flex items-center gap-2 group-hover:bg-white/30 transition-colors">
+                  <span>Take Survey</span>
+                  <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
+               </div>
+            </a>
          </div>
       </div>
    );
